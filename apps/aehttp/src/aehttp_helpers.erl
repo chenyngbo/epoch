@@ -5,6 +5,7 @@
         , read_required_params/1
         , read_optional_params/1
         , base58_decode/1
+        , base58_decode_optionally/1
         , hexstrings_decode/1
         , ttl_decode/1
         , parse_tx_encoding/1
@@ -90,6 +91,19 @@ base58_decode(Params) ->
         end,
         "Invalid hash").
 
+base58_decode_optionally(Params) ->
+    params_read_fun(Params,
+        fun({Name, Type}, _, Data) ->
+            Encoded = maps:get(Name, Data),
+            case aec_base58c:safe_decode(Type, Encoded) of
+                {error, _} ->
+                    {ok, Encoded};
+                {ok, Hash} ->
+                    {ok, Hash}
+            end
+        end,
+        "Invalid hash").
+
 hexstrings_decode(ParamNames) ->
     params_read_fun(ParamNames,
         fun(Name, _, State) ->
@@ -137,7 +151,8 @@ get_nonce(AccountKey) ->
     fun(Req, State) ->
         case maps:get(nonce, Req, undefined) of
             undefined ->
-                Pubkey = maps:get(AccountKey, State),
+                PubkeyOrName = maps:get(AccountKey, State),
+                Pubkey = resolve_name_for_state(PubkeyOrName, State),
                 case aec_next_nonce:pick_for_account(Pubkey) of
                     {ok, Nonce} ->
                         {ok, maps:put(nonce, Nonce, State)};
@@ -149,6 +164,17 @@ get_nonce(AccountKey) ->
                 {ok, maps:put(nonce, Nonce, State)}
         end
     end.
+
+resolve_name_for_state(PubkeyOrName, State) ->
+    NameType = case State of
+                   oracle -> oracle_pubkey;
+                   _      -> account_pubkey
+               end,
+    {ok, PubkeyMaybeEnc} = aec_chain:resolve_name_decoded(NameType, PubkeyOrName),
+    case aec_base58c:safe_decode(NameType, PubkeyMaybeEnc) of
+         {ok, PubkeyDec} -> PubkeyDec;
+         {error, _}   -> PubkeyMaybeEnc
+     end.
 
 print_state() ->
     fun(Req, State) ->
@@ -190,7 +216,9 @@ verify_oracle_query_existence(OracleKey, QueryKey) ->
 
 verify_key_in_state_tree(Key, StateTreeFun, Lookup, Entity) ->
     fun(_Req, State) ->
-        ReceivedAddress = maps:get(Key, State),
+        ReceivedAddressOrName = maps:get(Key, State),
+        lager:info("OraclePubKeyOrName: ~p ~p ~p", [Key, ReceivedAddressOrName, State]),
+        ReceivedAddress = resolve_name_for_state(ReceivedAddressOrName, State),
         TopBlockHash = aec_chain:top_block_hash(),
         {ok, Trees} = aec_chain:get_block_state(TopBlockHash),
         Tree = StateTreeFun(Trees),

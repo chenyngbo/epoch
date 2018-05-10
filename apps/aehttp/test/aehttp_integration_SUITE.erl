@@ -1001,7 +1001,7 @@ oracle_query_name_resolve_oracle_id(_Config) ->
     {ok, MinerPubkey} = aec_base58c:safe_decode(account_pubkey, MinerAddress),
 
     Name = <<"oracleIdResolvement.test"/utf8>>,
-    naming_pre_claim_claim_update(_Config, Name, MinerAddress),
+    naming_pre_claim_claim_update(_Config, Name, MinerPubkey),
 
     % oracle_register_tx positive test
     RegEncoded = #{account => MinerAddress,
@@ -1032,11 +1032,11 @@ oracle_query_name_resolve_oracle_id(_Config) ->
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]), % empty
 
     % oracle_extend_tx positive test
-    ExtEncoded = #{oracle => aec_base58c:encode(oracle_pubkey, MinerPubkey),
+    ExtEncoded = #{oracle => Name,
                    fee => 2,
                    ttl => #{type => <<"delta">>, value => 500}},
     ExtDecoded = maps:merge(ExtEncoded,
-        #{oracle => MinerPubkey,
+        #{oracle => Name,
           ttl => {delta, 500}}),
     unsigned_tx_positive_test(ExtDecoded, ExtEncoded,
         fun get_oracle_extend/1,
@@ -1044,7 +1044,7 @@ oracle_query_name_resolve_oracle_id(_Config) ->
 
     % oracle_query_tx positive test
     QueryEncoded = #{sender => MinerAddress,
-                     oracle_pubkey => aec_base58c:encode(oracle_pubkey, MinerPubkey),
+                     oracle_pubkey => Name,
                      query => <<"Hejsan Svejsan Other">>,
                      query_fee => 2,
                      fee => 30,
@@ -1052,7 +1052,7 @@ oracle_query_name_resolve_oracle_id(_Config) ->
                      response_ttl => #{type => <<"delta">>, value => 200}},
     QueryDecoded = maps:merge(QueryEncoded,
         #{sender => MinerPubkey,
-          oracle => MinerPubkey,
+          oracle => Name,
           query_ttl => {block, 200},
           response_ttl => {delta, 200}}),
     unsigned_tx_positive_test(QueryDecoded, QueryEncoded,
@@ -1073,12 +1073,12 @@ oracle_query_name_resolve_oracle_id(_Config) ->
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 2),
     {ok, []} = rpc(aec_tx_pool, peek, [infinity]), % empty
 
-    ResponseEncoded = #{oracle => MinerAddress,
+    ResponseEncoded = #{oracle => Name,
                         query_id => aec_base58c:encode(oracle_query_id, QueryId),
                         response => <<"Hejsan">>,
                         fee => 3},
     ResponseDecoded = maps:merge(ResponseEncoded,
-        #{oracle => MinerPubkey,
+        #{oracle => Name,
           query_id => QueryId}),
     unsigned_tx_positive_test(ResponseDecoded, ResponseEncoded,
         fun get_oracle_response/1,
@@ -2645,14 +2645,15 @@ naming_spend_to_name(_Config) ->
     ok.
 
 naming_pre_claim_claim_update(_Config, Name, PubKey) ->
-    PubKeyEnc   = aec_base58c:encode(account_pubkey, PubKey),
-    NameSalt    = 12345,
-    NameTTL     = 60000,
-    Pointers    = <<"{\"account_pubkey\":\"", PubKeyEnc/binary, "\",\"oracle_pubkey\":\"", PubKeyEnc/binary, "\"}">>,
-    TTL         = 10,
-    {ok, NHash} = aens:get_name_hash(Name),
-    Fee         = 2,
-    MineReward  = rpc(aec_governance, block_mine_reward, []),
+    PubKeyEnc       = aec_base58c:encode(account_pubkey, PubKey),
+    PubKeyEncOracle = aec_base58c:encode(oracle_pubkey, PubKey),
+    NameSalt        = 12345,
+    NameTTL         = 60000,
+    Pointers        = <<"{\"account_pubkey\":\"", PubKeyEnc/binary, "\",\"oracle_pubkey\":\"", PubKeyEncOracle/binary, "\"}">>,
+    TTL             = 10,
+    {ok, NHash}     = aens:get_name_hash(Name),
+    Fee             = 2,
+    MineReward      = rpc(aec_governance, block_mine_reward, []),
 
     %% Mine 10 blocks to get some funds
     aecore_suite_utils:mine_blocks(aecore_suite_utils:node_name(?NODE), 10),

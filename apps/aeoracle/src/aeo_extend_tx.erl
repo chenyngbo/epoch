@@ -98,10 +98,13 @@ signers(#oracle_extend_tx{oracle = OraclePK}, _) ->
     {ok, [OraclePK]}.
 
 -spec process(tx(), aetx:tx_context(), aec_trees:trees(), height(), non_neg_integer()) -> {ok, aec_trees:trees()}.
-process(#oracle_extend_tx{oracle = OraclePK, nonce = Nonce, fee = Fee, ttl = TTL},
+process(#oracle_extend_tx{oracle = OraclePKOrName, nonce = Nonce, fee = Fee, ttl = TTL},
         _Context, Trees0, Height, _ConsensusVersion) ->
     AccountsTree0 = aec_trees:accounts(Trees0),
     OraclesTree0  = aec_trees:oracles(Trees0),
+    NamesTree0 = aec_trees:ns(Trees0),
+
+    {ok, OraclePK} = aens:resolve_decoded(oracle_pubkey, OraclePKOrName, NamesTree0),
 
     Account0 = aec_accounts_trees:get(OraclePK, AccountsTree0),
     {ok, Account1} = aec_accounts:spend(Account0, Fee, Nonce, Height),
